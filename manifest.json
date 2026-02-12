@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Student Task Tracker",
+  "version": "1.0.0",
+  "description": "Track assignments and exams in a simple, accessible interface right from your browser.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "action": {
+    "default_title": "Toggle Task Tracker",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
