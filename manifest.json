@@ -3,7 +3,7 @@
   "name": "Student Task Tracker",
   "version": "1.0.0",
   "description": "Track assignments and exams in a simple, accessible interface right from your browser.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "contextMenus"],
   "action": {
     "default_title": "Toggle Task Tracker",
     "default_icon": {
@@ -19,5 +19,13 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
 }

@@ -92,14 +92,99 @@
     panel.style.display = 'none';
   });
 
-  // --- Toggle via message ---
+  // --- Extract date from text ---
+  // Tries to pull a date out of highlighted text, returns { name, date }
+  function extractDateFromText(text) {
+    const cleaned = text.trim();
+    const patterns = [
+      // MM/DD/YYYY or MM-DD-YYYY
+      /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
+      // "Feb 15, 2026" or "February 15, 2026"
+      /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/i,
+      // "15 Feb 2026" or "15 February 2026"
+      /\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?),?\s*(\d{4})\b/i,
+      // YYYY-MM-DD
+      /(\d{4})-(\d{2})-(\d{2})/
+    ];
+
+    const monthMap = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+
+    for (const pat of patterns) {
+      const m = cleaned.match(pat);
+      if (!m) continue;
+
+      let iso = null;
+      if (pat === patterns[0]) {
+        // MM/DD/YYYY
+        iso = `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+      } else if (pat === patterns[1]) {
+        // Month DD, YYYY
+        const mon = monthMap[m[1].toLowerCase().substring(0,3)];
+        iso = `${m[3]}-${String(mon).padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+      } else if (pat === patterns[2]) {
+        // DD Month YYYY
+        const mon = monthMap[m[2].toLowerCase().substring(0,3)];
+        iso = `${m[3]}-${String(mon).padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      } else if (pat === patterns[3]) {
+        // YYYY-MM-DD
+        iso = `${m[1]}-${m[2]}-${m[3]}`;
+      }
+
+      if (iso) {
+        const name = cleaned.replace(m[0], '').replace(/[\s,\-–—]+$/, '').replace(/^[\s,\-–—]+/, '').trim();
+        return { name: name || cleaned, date: iso };
+      }
+    }
+
+    return { name: cleaned, date: null };
+  }
+
+  // --- Message handler ---
   chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === 'ping') return; // alive check
+
     if (msg.action === 'toggle') {
       if (panel.style.display === 'none' || panel.style.display === '') {
         panel.style.display = 'flex';
         loadData();
       } else {
         panel.style.display = 'none';
+      }
+    }
+
+    if (msg.action === 'add-selection') {
+      // Switch to the right tab
+      const targetTab = msg.type || 'assignments';
+      if (targetTab !== activeTab) {
+        activeTab = targetTab;
+        tabs.forEach(t => {
+          t.classList.toggle('active', t.dataset.tab === activeTab);
+        });
+        nameInput.placeholder = `Enter ${activeTab === 'assignments' ? 'assignment' : 'exam'} name...`;
+      }
+
+      // Extract name + date from selection
+      const extracted = extractDateFromText(msg.text);
+
+      // Open panel and pre-fill
+      panel.style.display = 'flex';
+      loadData();
+      nameInput.value = extracted.name;
+
+      if (extracted.date) {
+        // Date found in text — fill it and auto-focus the add button
+        const d = parseDate(extracted.date);
+        if (d) {
+          dateInput.value = `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
+        }
+        // Brief highlight to show it's ready to add
+        addBtn.style.transform = 'scale(1.2)';
+        setTimeout(() => { addBtn.style.transform = ''; }, 300);
+        nameInput.focus();
+      } else {
+        // No date found — focus the date field so user can type it
+        dateInput.value = '';
+        dateInput.focus();
       }
     }
   });
