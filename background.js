@@ -37,11 +37,13 @@ chrome.action.onClicked.addListener(async (tab) => {
 // Inject content script + CSS if not already present
 async function ensureContentScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+    const resp = await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+    if (resp && resp.ok) return;
   } catch (e) {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-    await chrome.scripting.insertCSS({ target: { tabId }, files: ['content.css'] });
+    // not loaded yet
   }
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  await chrome.scripting.insertCSS({ target: { tabId }, files: ['content.css'] });
 }
 
 // Send message with retries — waits for content script to be ready

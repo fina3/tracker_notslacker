@@ -29,6 +29,7 @@
     <div id="tracker-list"></div>
     <div id="tracker-resize">&#x27CB;</div>
   `;
+  panel.style.display = 'none';
   document.body.appendChild(panel);
 
   // --- Elements ---
@@ -159,11 +160,14 @@
   }
 
   // --- Message handler ---
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === 'ping') return; // alive check
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === 'ping') {
+      sendResponse({ ok: true });
+      return;
+    }
 
     if (msg.action === 'toggle') {
-      if (panel.style.display === 'none' || panel.style.display === '') {
+      if (panel.style.display === 'none') {
         panel.style.display = 'flex';
         loadData();
       } else {
