@@ -1,20 +1,13 @@
 // Create context menu items on install
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: 'track-parent',
-    title: 'Track "%s"',
-    contexts: ['selection']
-  });
-  chrome.contextMenus.create({
     id: 'add-assignment',
-    parentId: 'track-parent',
-    title: 'as Assignment',
+    title: 'Track Assignment',
     contexts: ['selection']
   });
   chrome.contextMenus.create({
     id: 'add-exam',
-    parentId: 'track-parent',
-    title: 'as Exam',
+    title: 'Track Exam',
     contexts: ['selection']
   });
 });
