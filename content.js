@@ -23,7 +23,7 @@
     </div>
     <div id="tracker-add">
       <input type="text" id="tracker-name" placeholder="Enter assignment name..." maxlength="200" autocomplete="off">
-      <input type="text" id="tracker-date" placeholder="MM/DD/YYYY" maxlength="10" autocomplete="off">
+      <input type="text" id="tracker-date" placeholder="MM/DD/YYYY or Feb 15" maxlength="20" autocomplete="off">
       <button id="tracker-add-btn" title="Add">+</button>
     </div>
     <div id="tracker-list"></div>
@@ -93,47 +93,66 @@
   });
 
   // --- Extract date from text ---
-  // Tries to pull a date out of highlighted text, returns { name, date }
+  const MONTH_MAP = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+  const MONTH_PAT = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+  const ORDINAL = '(?:st|nd|rd|th)';
+
+  function inferYear(month, day) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const candidate = new Date(y, month - 1, day);
+    // If the date is more than 60 days in the past, assume next year
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+    return candidate < cutoff ? y + 1 : y;
+  }
+
+  function buildISO(year, month, day) {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+
+  function expandYear(yy) {
+    const n = parseInt(yy, 10);
+    return n < 70 ? 2000 + n : 1900 + n;
+  }
+
   function extractDateFromText(text) {
     const cleaned = text.trim();
-    const patterns = [
-      // MM/DD/YYYY or MM-DD-YYYY
-      /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
-      // "Feb 15, 2026" or "February 15, 2026"
-      /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/i,
-      // "15 Feb 2026" or "15 February 2026"
-      /\b(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?),?\s*(\d{4})\b/i,
+
+    // Ordered from most specific to least specific
+    const extractors = [
       // YYYY-MM-DD
-      /(\d{4})-(\d{2})-(\d{2})/
+      { re: /(\d{4})-(\d{1,2})-(\d{1,2})/, parse: m => buildISO(+m[1], +m[2], +m[3]) },
+      // MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY
+      { re: /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/, parse: m => buildISO(+m[3], +m[1], +m[2]) },
+      // MM/DD/YY or MM-DD-YY or MM.DD.YY
+      { re: /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2})\b/, parse: m => buildISO(expandYear(m[3]), +m[1], +m[2]) },
+      // Month DD, YYYY  (Feb 15, 2026 / February 15th, 2026)
+      { re: new RegExp(`\\b(${MONTH_PAT})\\s+(\\d{1,2})${ORDINAL}?,?\\s+(\\d{4})\\b`, 'i'), parse: m => buildISO(+m[3], MONTH_MAP[m[1].toLowerCase().substring(0,3)], +m[2]) },
+      // DD Month YYYY  (15 Feb 2026 / 15th February 2026)
+      { re: new RegExp(`\\b(\\d{1,2})${ORDINAL}?\\s+(${MONTH_PAT}),?\\s+(\\d{4})\\b`, 'i'), parse: m => buildISO(+m[3], MONTH_MAP[m[2].toLowerCase().substring(0,3)], +m[1]) },
+      // Month DD, YY  (Feb 15, 26)
+      { re: new RegExp(`\\b(${MONTH_PAT})\\s+(\\d{1,2})${ORDINAL}?,?\\s+(\\d{2})\\b`, 'i'), parse: m => buildISO(expandYear(m[3]), MONTH_MAP[m[1].toLowerCase().substring(0,3)], +m[2]) },
+      // Month DD  (Feb 15 / February 15th) — no year
+      { re: new RegExp(`\\b(${MONTH_PAT})\\s+(\\d{1,2})${ORDINAL}?\\b`, 'i'), parse: m => { const mo = MONTH_MAP[m[1].toLowerCase().substring(0,3)]; const d = +m[2]; return buildISO(inferYear(mo, d), mo, d); } },
+      // DD Month  (15 Feb / 15th February) — no year
+      { re: new RegExp(`\\b(\\d{1,2})${ORDINAL}?\\s+(${MONTH_PAT})\\b`, 'i'), parse: m => { const mo = MONTH_MAP[m[2].toLowerCase().substring(0,3)]; const d = +m[1]; return buildISO(inferYear(mo, d), mo, d); } },
+      // MM/DD or MM-DD or MM.DD — no year (only if month <= 12)
+      { re: /\b(\d{1,2})[\/\-.](\d{1,2})\b/, parse: m => { const mo = +m[1]; const d = +m[2]; if (mo > 12) return null; return buildISO(inferYear(mo, d), mo, d); } },
     ];
 
-    const monthMap = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
-
-    for (const pat of patterns) {
-      const m = cleaned.match(pat);
+    for (const { re, parse } of extractors) {
+      const m = cleaned.match(re);
       if (!m) continue;
+      const iso = parse(m);
+      if (!iso) continue;
 
-      let iso = null;
-      if (pat === patterns[0]) {
-        // MM/DD/YYYY
-        iso = `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
-      } else if (pat === patterns[1]) {
-        // Month DD, YYYY
-        const mon = monthMap[m[1].toLowerCase().substring(0,3)];
-        iso = `${m[3]}-${String(mon).padStart(2,'0')}-${m[2].padStart(2,'0')}`;
-      } else if (pat === patterns[2]) {
-        // DD Month YYYY
-        const mon = monthMap[m[2].toLowerCase().substring(0,3)];
-        iso = `${m[3]}-${String(mon).padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-      } else if (pat === patterns[3]) {
-        // YYYY-MM-DD
-        iso = `${m[1]}-${m[2]}-${m[3]}`;
-      }
-
-      if (iso) {
-        const name = cleaned.replace(m[0], '').replace(/[\s,\-–—]+$/, '').replace(/^[\s,\-–—]+/, '').trim();
-        return { name: name || cleaned, date: iso };
-      }
+      // Strip the matched date from the name
+      let name = cleaned.replace(m[0], '');
+      // Strip common prefixes/suffixes and separators
+      name = name.replace(/^[\s,\-–—:|]+/, '').replace(/[\s,\-–—:|]+$/, '');
+      name = name.replace(/\b(due|deadline|submit|by|on|date|@)\b\s*/gi, '').trim();
+      return { name: name || cleaned, date: iso };
     }
 
     return { name: cleaned, date: null };
@@ -217,13 +236,38 @@
 
   // --- Date Utilities ---
   function parseDate(dateStr) {
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-      const [month, day, year] = dateStr.split('/').map(Number);
-      return new Date(year, month - 1, day);
+    if (!dateStr) return null;
+    const s = dateStr.trim();
+
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
     }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      const [year, month, day] = dateStr.split('-').map(Number);
-      return new Date(year, month - 1, day);
+    // MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY
+    if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/.test(s)) {
+      const [m, d, y] = s.split(/[\/\-\.]/).map(Number);
+      return new Date(y, m - 1, d);
+    }
+    // MM/DD/YY or MM-DD-YY or MM.DD.YY
+    if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2}$/.test(s)) {
+      const parts = s.split(/[\/\-\.]/);
+      const y = expandYear(parts[2]);
+      return new Date(y, +parts[0] - 1, +parts[1]);
+    }
+    // MM/DD or MM-DD or MM.DD (no year)
+    if (/^\d{1,2}[\/\-\.]\d{1,2}$/.test(s)) {
+      const [m, d] = s.split(/[\/\-\.]/).map(Number);
+      if (m >= 1 && m <= 12) return new Date(inferYear(m, d), m - 1, d);
+    }
+    // "Feb 15, 2026" / "February 15th 2026" etc.
+    const monthYearFull = new RegExp(`^(${MONTH_PAT})\\s+(\\d{1,2})${ORDINAL}?,?\\s*(\\d{4})?$`, 'i');
+    const mf = s.match(monthYearFull);
+    if (mf) {
+      const mo = MONTH_MAP[mf[1].toLowerCase().substring(0,3)];
+      const d = +mf[2];
+      const y = mf[3] ? +mf[3] : inferYear(mo, d);
+      return new Date(y, mo - 1, d);
     }
     return null;
   }
